@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 130" width="100%" height="100%" fill="none">
+  <!-- Brand Wordmark: FynTrust (Light Background Version) -->
+  <g id="wordmark">
+    <!-- "FynTrust" Main Typography -->
+    <text x="8" y="76" font-family="'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="800" font-size="62" fill="#01574F" letter-spacing="-0.5">FynTrus</text>
+    
+    <!-- Growth Graph & Rising Trendline Arrow (representing 't' and financial growth) -->
+    <g id="growth-emblem" transform="translate(262, 10)">
+      <!-- 3 Financial Growth Bars -->
+      <rect x="14" y="44" width="13" height="28" rx="2.5" fill="#78BB69" />
+      <rect x="31" y="30" width="13" height="42" rx="2.5" fill="#78BB69" />
+      <rect x="48" y="18" width="13" height="54" rx="2.5" fill="#01574F" />
+      
+      <!-- Rising Growth Trendline & Arrow Head -->
+      <path d="M4 56 L26 42 L64 12" stroke="#01574F" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" />
+      <path d="M44 11 L65 11 L65 32" fill="none" stroke="#01574F" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" />
+    </g>
+  </g>
+
+  <!-- Official Brand Tagline -->
+  <g id="tagline">
+    <text x="10" y="112" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="600" font-size="16" fill="#334155" letter-spacing="0.3">Fueling Startups with Smart Finance</text>
+  </g>
+</svg>

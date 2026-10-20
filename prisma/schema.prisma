@@ -1,0 +1,942 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// USER & IDENTITY
+// ==========================================
+
+model User {
+  id                 String          @id @default(uuid())
+  email              String?         @unique
+  mobile             String?         @unique
+  passwordHash       String?
+  fullName           String
+  role               String          @default("CUSTOMER") // SUPER_ADMIN, ADMIN, SALES, CA_FINANCE_EXPERT, ACCOUNTANT, LEGAL_PARTNER, VIRTUAL_CFO, CUSTOMER
+  isActive           Boolean         @default(true)
+  isTwoFactorEnabled Boolean         @default(false)
+  twoFactorSecret    String?
+  avatarUrl          String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  customerProfile    CustomerProfile?
+  expertProfile      ExpertProfile?
+  auditLogs          AuditLog[]
+  loginHistories     LoginHistory[]
+  sentMessages       OrderMessage[]
+  assignedLeads      Lead[]          @relation("AssignedSales")
+  notifications      CustomerNotification[]
+
+  @@index([email])
+  @@index([mobile])
+  @@index([role])
+}
+
+model CustomerProfile {
+  id           String      @id @default(uuid())
+  userId       String      @unique
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessName String
+  businessType String      // Proprietorship, Partnership, LLP, Private Limited, OPC, Section 8, etc.
+  gstNumber    String?
+  panNumber    String?
+  city         String?
+  state        String?
+  pincode      String?
+  turnoverBand String?
+  industry     String?
+  address      String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  orders             Order[]
+  documents          Document[]
+  payments           Payment[]
+  invoices           Invoice[]
+  compliances        ComplianceItem[]
+  recurringServices  RecurringService[]
+  complianceRecords  ComplianceRecord[]
+  reviews            Review[]
+
+  @@index([businessName])
+  @@index([city])
+}
+
+model ExpertProfile {
+  id                 String    @id @default(uuid())
+  userId             String    @unique
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  qualification      String    // CA, CS, CMA, Advocate, CPA, MBA Finance, etc.
+  expertise          String    // Comma-separated or JSON list of skills
+  city               String
+  state              String
+  experienceYears    Int       @default(0)
+  assignedCategories String    // JSON or comma-separated category slugs
+  availabilityStatus String    // AVAILABLE, BUSY, INACTIVE
+  rating             Float     @default(5.0)
+  commissionRate     Float     @default(0.0) // Percentage or fixed rate
+  panNumber          String?
+  bankDetails        String?   // JSON structured bank account info
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  assignedOrders     Order[]
+  deliverables       Deliverable[]
+  tasks              ExpertTask[]
+  recurringServices  RecurringService[]
+  complianceRecords  ComplianceRecord[]
+
+  @@index([city])
+  @@index([qualification])
+}
+
+// ==========================================
+// SERVICE CATALOGUE & PACKAGES
+// ==========================================
+
+model ServiceCategory {
+  id           String    @id @default(uuid())
+  name         String    @unique
+  slug         String    @unique
+  description  String?
+  icon         String?
+  displayOrder Int       @default(0)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  services     Service[]
+
+  @@index([slug])
+  @@index([isActive])
+}
+
+model Service {
+  id                String          @id @default(uuid())
+  categoryId        String
+  category          ServiceCategory @relation(fields: [categoryId], references: [id])
+  name              String
+  slug              String          @unique
+  shortDescription  String
+  fullDescription   String
+  startingPrice     Float           @default(0.0)
+  discountPrice     Float?
+  slaDays           Int             @default(3)
+  department        String          @default("TAX") // TAX, LEGAL, ACCOUNTING, COMPLIANCE, ROC, CFO
+  expertCategory    String          @default("CA_FINANCE_EXPERT")
+  whatsIncluded     String          // JSON array of strings
+  eligibility       String?         // JSON array of strings
+  documentsRequired String          // JSON array of strings
+  processSteps      String          // JSON array of objects [{step: 1, title: '', desc: ''}]
+  faqs              String?         // JSON array of objects [{q: '', a: ''}]
+  isFeatured        Boolean         @default(false)
+  isActive          Boolean         @default(true)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  packages          ServicePackage[]
+  orders            Order[]
+  leads             Lead[]
+  seoPages          SEOPages[]
+  recurringServices RecurringService[]
+  cityServicePages  CityServicePage[]
+
+  @@index([slug])
+  @@index([categoryId])
+  @@index([department])
+  @@index([isActive])
+}
+
+model ServicePackage {
+  id          String   @id @default(uuid())
+  serviceId   String
+  service     Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  name        String   // Starter, Growth, Advanced, Premium
+  tier        String   @default("STARTER") // STARTER, GROWTH, ADVANCED, PREMIUM
+  price       Float
+  slaDays     Int      @default(3)
+  description String?
+  features    String   // JSON array of feature strings
+  isPopular   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  orders            Order[]
+  recurringServices RecurringService[]
+
+  @@index([serviceId])
+  @@index([tier])
+}
+
+// ==========================================
+// ORDER FLOW, LIFECYCLE & DELIVERABLES
+// ==========================================
+
+model Order {
+  id               String          @id @default(uuid())
+  orderNumber      String          @unique // e.g. FYN-2026-0001
+  customerId       String
+  customer         CustomerProfile @relation(fields: [customerId], references: [id])
+  serviceId        String
+  service          Service         @relation(fields: [serviceId], references: [id])
+  packageId        String?
+  package          ServicePackage? @relation(fields: [packageId], references: [id])
+  status           String          @default("ORDER_PLACED") 
+  // ORDER_PLACED, PAYMENT_RECEIVED, DOCUMENTS_PENDING, DOCUMENTS_VERIFIED, 
+  // EXPERT_ASSIGNED, WORK_IN_PROGRESS, SUBMITTED_FILED, GOVERNMENT_PROCESSING, COMPLETED, CANCELLED, ON_HOLD
+  paymentStatus    String          @default("PENDING") // PENDING, PAID, FAILED, REFUNDED
+  totalAmount      Float           @default(0.0)
+  currency         String          @default("INR")
+  requirementData  String?         // JSON answers to dynamic service questions
+  assignedExpertId String?
+  assignedExpert   ExpertProfile?  @relation(fields: [assignedExpertId], references: [id])
+  assignedAt       DateTime?
+  completedAt      DateTime?
+  slaDueDate       DateTime?
+  isRecurring      Boolean         @default(false)
+  recurringCycle   String?         // MONTHLY, QUARTERLY, ANNUALLY
+  nextRenewalDate  DateTime?
+  utmSource        String?
+  utmMedium        String?
+  utmCampaign      String?
+  utmTerm          String?
+  utmContent       String?
+  landingPage      String?
+  referrer         String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  steps            OrderStep[]
+  messages         OrderMessage[]
+  documents        Document[]
+  payments         Payment[]
+  invoices         Invoice[]
+  deliverables     Deliverable[]
+  tasks            ExpertTask[]
+  recurringServices RecurringService[]
+  complianceRecords ComplianceRecord[]
+
+  @@index([orderNumber])
+  @@index([customerId])
+  @@index([assignedExpertId])
+  @@index([status])
+  @@index([paymentStatus])
+}
+
+model OrderStep {
+  id          String    @id @default(uuid())
+  orderId     String
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  stepNumber  Int
+  status      String    @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, SKIPPED
+  completedAt DateTime?
+  notes       String?   // Internal step notes
+  createdAt   DateTime  @default(now())
+
+  @@index([orderId])
+  @@index([stepNumber])
+}
+
+model OrderMessage {
+  id             String    @id @default(uuid())
+  orderId        String
+  order          Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User      @relation(fields: [senderId], references: [id])
+  senderRole     String
+  message        String
+  attachments    String?   // JSON array of file objects
+  isInternalOnly Boolean   @default(false) // If true, NEVER returned to customer API
+  isRead         Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+
+  @@index([orderId])
+  @@index([senderId])
+  @@index([isInternalOnly])
+}
+
+// ==========================================
+// DOCUMENT VAULT (Client -> FY -> Service)
+// ==========================================
+
+model Document {
+  id                 String          @id @default(uuid())
+  customerId         String
+  customer           CustomerProfile @relation(fields: [customerId], references: [id])
+  orderId            String?
+  order              Order?          @relation(fields: [orderId], references: [id])
+  name               String
+  fileKey            String          // S3 Key or local path: Client/FY/Service/filename
+  fileUrl            String
+  fileType           String
+  fileSize           Int             @default(0) // bytes
+  financialYear      String          @default("2026-27") // e.g. 2026-27
+  category           String          @default("GENERAL") // GST, ITR, ROC, INCORPORATION, AUDIT, BANKING, GENERAL
+  status             String          @default("PENDING_VERIFICATION") // PENDING_UPLOAD, PENDING_VERIFICATION, VERIFIED, REJECTED, EXPIRED
+  rejectionReason    String?
+  requestedByUserId  String?
+  verifiedAt         DateTime?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  @@index([customerId])
+  @@index([orderId])
+  @@index([financialYear])
+  @@index([category])
+  @@index([status])
+}
+
+// ==========================================
+// PAYMENTS & INVOICES
+// ==========================================
+
+model Payment {
+  id               String          @id @default(uuid())
+  orderId          String
+  order            Order           @relation(fields: [orderId], references: [id])
+  customerId       String
+  customer         CustomerProfile @relation(fields: [customerId], references: [id])
+  paymentGateway   String          @default("MOCK") // RAZORPAY, CASHFREE, MOCK, MANUAL
+  gatewayOrderId   String?
+  gatewayPaymentId String?
+  gatewaySignature String?
+  amount           Float
+  currency         String          @default("INR")
+  status           String          @default("PENDING") // PENDING, COMPLETED, FAILED, REFUNDED
+  paymentMethod    String?         // UPI, CARD, NET_BANKING, PAYMENT_LINK
+  paymentDate      DateTime?
+  failureReason    String?
+  rawResponse      String?         // JSON debug response
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([orderId])
+  @@index([customerId])
+  @@index([gatewayPaymentId])
+  @@index([status])
+}
+
+model Invoice {
+  id                 String            @id @default(uuid())
+  invoiceNumber      String            @unique // e.g. INV-2026-0001
+  orderId            String?
+  order              Order?            @relation(fields: [orderId], references: [id])
+  customerId         String
+  customer      CustomerProfile @relation(fields: [customerId], references: [id])
+  amount        Float
+  taxAmount     Float           @default(0.0) // 18% GST standard
+  totalAmount   Float
+  status        String          @default("PAID") // DRAFT, ISSUED, PAID, CANCELLED, REFUNDED
+  invoiceDate   DateTime        @default(now())
+  dueDate       DateTime?
+  pdfUrl        String?
+  lineItems     String          // JSON array of items [{desc: '', qty: 1, rate: 0, tax: 0, total: 0}]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  creditNotes   CreditNote[]
+
+  @@index([invoiceNumber])
+  @@index([orderId])
+  @@index([customerId])
+}
+
+model CreditNote {
+  id               String   @id @default(uuid())
+  creditNoteNumber String   @unique // e.g. CN-2026-0001
+  invoiceId        String
+  invoice          Invoice  @relation(fields: [invoiceId], references: [id])
+  amount           Float
+  reason           String
+  status           String   @default("ISSUED") // ISSUED, APPLIED, CANCELLED
+  createdAt        DateTime @default(now())
+
+  @@index([invoiceId])
+}
+
+// ==========================================
+// COMPLIANCE CALENDAR
+// ==========================================
+
+model ComplianceItem {
+  id            String          @id @default(uuid())
+  customerId    String
+  customer      CustomerProfile @relation(fields: [customerId], references: [id])
+  title         String          // e.g. GSTR-3B Monthly Filing, Advance Tax Q1
+  category      String          // GST, ITR, TDS, ROC, ADVANCE_TAX, PF_ESIC
+  dueDate       DateTime
+  financialYear String          @default("2026-27")
+  status        String          @default("UPCOMING") // UPCOMING, COMPLETED, OVERDUE, WAIVED
+  penaltyRisk   String?         // e.g. "Late fee ₹50/day + 18% p.a. interest"
+  reminderSent  Boolean         @default(false)
+  completedAt   DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([customerId])
+  @@index([dueDate])
+  @@index([status])
+}
+
+// ==========================================
+// CRM & LEADS PIPELINE
+// ==========================================
+
+model Lead {
+  id             String    @id @default(uuid())
+  name           String
+  email          String?
+  mobile         String
+  city           String?
+  businessName   String?
+  businessType   String?
+  serviceId      String?
+  service        Service?  @relation(fields: [serviceId], references: [id])
+  source         String    @default("WEBSITE") // WEBSITE, META_ADS, GOOGLE_ADS, WHATSAPP, DIRECT, REFERRAL
+  status         String    @default("NEW_LEAD") 
+  // NEW_LEAD, CONTACTED, QUALIFIED, QUOTATION, FOLLOW_UP, PAYMENT, CONVERTED, LOST
+  notes          String?   // Sales notes history JSON or text
+  assignedSalesId String?
+  assignedSales  User?     @relation("AssignedSales", fields: [assignedSalesId], references: [id])
+  quoteAmount    Float?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([mobile])
+  @@index([status])
+  @@index([source])
+  @@index([assignedSalesId])
+}
+
+// ==========================================
+// CMS, CITIES & PAN INDIA SEO (PHASE 8)
+// ==========================================
+
+model City {
+  id                  String            @id @default(uuid())
+  name                String            @unique // Delhi, Mumbai, Bengaluru, Lucknow, Varanasi, etc.
+  slug                String            @unique
+  state               String
+  shortDescription    String?
+  serviceAvailability String?           // JSON array of service slugs or "ALL"
+  isPopular           Boolean           @default(false)
+  featuredStatus      Boolean           @default(false)
+  isActive            Boolean           @default(true)
+  status              String            @default("ACTIVE") // ACTIVE, DRAFT, COMING_SOON
+  localAddress        String?
+  localPhone          String?
+  seoTitle            String?
+  seoDescription      String?
+  createdAt           DateTime          @default(now())
+
+  seoPages            SEOPages[]
+  cityServicePages    CityServicePage[]
+
+  @@index([slug])
+  @@index([isActive])
+}
+
+model CityServicePage {
+  id                String   @id @default(uuid())
+  cityId            String
+  city              City     @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  serviceId         String
+  service           Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  slug              String   @unique // e.g. "lucknow/gst-registration"
+  title             String
+  metaTitle         String?
+  metaDescription   String?
+  overview          String
+  localContext      String
+  whoItsFor         String
+  processSteps      String?  // JSON array of steps
+  documentsRequired String?  // JSON array of doc strings
+  pricingNotes      String?
+  startingPrice     Float?
+  faqs              String?  // JSON array of {q, a}
+  status            String   @default("PUBLISHED") // PUBLISHED, DRAFT, NOINDEX
+  isPublished       Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([slug])
+  @@index([cityId])
+  @@index([serviceId])
+  @@index([isPublished])
+}
+
+model SEOPages {
+  id                 String   @id @default(uuid())
+  pageType           String   // HOMEPAGE, SERVICE, CATEGORY, CITY, CITY_SERVICE, BLOG, RESOURCE, TOOL, COMPLIANCE, ABOUT, CONTACT, CUSTOM
+  slug               String   @unique // e.g. "ca-services/lucknow", "gst-registration/delhi"
+  cityId             String?
+  city               City?    @relation(fields: [cityId], references: [id])
+  serviceId          String?
+  service            Service? @relation(fields: [serviceId], references: [id])
+  metaTitle          String
+  metaDescription    String
+  keywords           String?
+  canonicalUrl       String?
+  ogTitle            String?
+  ogDescription      String?
+  ogImage            String?
+  robotsIndex        Boolean  @default(true)
+  robotsFollow       Boolean  @default(true)
+  schemaType         String   @default("WebPage") // Organization, Service, LocalBusiness, FAQPage, Article
+  primaryKeyword     String?
+  secondaryKeywords  String?
+  sitemapIncluded    Boolean  @default(true)
+  structuredDataJson String?  // JSON schema LD override
+  contentJson        String?  // Rich dynamic section content
+  isPublished        Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([slug])
+  @@index([pageType])
+}
+
+model Blog {
+  id              String    @id @default(uuid())
+  title           String
+  slug            String    @unique
+  category        String    // GST, INCOME_TAX, COMPANY_REGISTRATION, MCA, ACCOUNTING, VIRTUAL_CFO, STARTUP
+  excerpt         String
+  content         String
+  featuredImage   String?
+  authorName      String    @default("Fyntrust Editorial Team")
+  authorRole      String?   @default("Senior Financial & Legal Consultant")
+  metaTitle       String?
+  metaDescription String?
+  keywords        String?
+  isPublished     Boolean   @default(false)
+  status          String    @default("PUBLISHED") // DRAFT, REVIEW, SCHEDULED, PUBLISHED, ARCHIVED
+  publishedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([slug])
+  @@index([category])
+  @@index([isPublished])
+}
+
+model ResourceItem {
+  id            String   @id @default(uuid())
+  title         String
+  category      String   // CHECKLIST, GUIDE, TEMPLATE, TAX_CHART, CALCULATOR
+  fileUrl       String
+  fileType      String   @default("PDF")
+  fileSize      Int      @default(0)
+  downloadCount Int      @default(0)
+  isPublic      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([category])
+}
+
+model Review {
+  id           String           @id @default(uuid())
+  customerId   String?
+  customer     CustomerProfile? @relation(fields: [customerId], references: [id])
+  orderId      String?
+  customerName String
+  businessName String
+  city         String
+  serviceName  String
+  rating       Int              @default(5)
+  reviewText   String
+  photoUrl     String?
+  status       String           @default("APPROVED") // PENDING, APPROVED, REJECTED, HIDDEN
+  isPublished  Boolean          @default(true)
+  displayOrder Int              @default(0)
+  publishedAt  DateTime?        @default(now())
+  createdAt    DateTime         @default(now())
+
+  @@index([isPublished])
+  @@index([status])
+  @@index([city])
+}
+
+model Redirect {
+  id             String   @id @default(uuid())
+  sourceUrl      String   @unique
+  destinationUrl String
+  statusCode     Int      @default(301) // 301, 302, 307, 308
+  isActive       Boolean  @default(true)
+  hitsCount      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([sourceUrl])
+  @@index([isActive])
+}
+
+model MarketingAutomationRule {
+  id           String   @id @default(uuid())
+  name         String
+  triggerEvent String   // NEW_LEAD, NO_RESPONSE, QUOTATION_SENT, QUOTATION_EXPIRING, PAYMENT_PENDING, ORDER_ABANDONED
+  delayHours   Int      @default(24)
+  channel      String   @default("WHATSAPP") // WHATSAPP, EMAIL, SMS, IN_APP
+  templateId   String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([triggerEvent])
+  @@index([isActive])
+}
+
+model AnalyticsEvent {
+  id             String   @id @default(uuid())
+  eventName      String   // PAGE_VIEW, SERVICE_VIEW, GET_STARTED_CLICK, LEAD_SUBMIT, ORDER_START, PAYMENT_SUCCESS, TOOL_COMPLETED, WHATSAPP_CLICK
+  pagePath       String
+  sessionId      String?
+  userId         String?
+  leadId         String?
+  orderId        String?
+  utmSource      String?
+  utmMedium      String?
+  utmCampaign    String?
+  utmTerm        String?
+  utmContent     String?
+  city           String?
+  serviceSlug    String?
+  propertiesJson String?  // Additional event metadata JSON
+  createdAt      DateTime @default(now())
+
+  @@index([eventName])
+  @@index([createdAt])
+  @@index([utmSource])
+  @@index([pagePath])
+}
+
+model NotificationTemplate {
+  id           String   @id @default(uuid())
+  name         String   @unique
+  eventType    String   // ORDER_CREATED, PAYMENT_SUCCESS, DOCUMENTS_PENDING, EXPERT_ASSIGNED, STATUS_UPDATE, RENEWAL_REMINDER
+  channel      String   // EMAIL, WHATSAPP, SMS, DASHBOARD
+  subject      String?
+  bodyTemplate String   // Template with {{customerName}}, {{orderId}}, {{serviceName}}
+  variables    String   // JSON array of available variable strings
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([eventType])
+  @@index([channel])
+}
+
+model CustomerNotification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  channel   String   @default("DASHBOARD") // EMAIL, WHATSAPP, SMS, DASHBOARD
+  isRead    Boolean  @default(false)
+  linkUrl   String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+}
+
+// ==========================================
+// SECURITY & AUDIT TRAIL
+// ==========================================
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  userRole  String?
+  action    String   // CREATE, UPDATE, DELETE, ASSIGN, STATUS_CHANGE, LOGIN, EXPORT
+  entity    String   // Order, Service, Customer, Expert, Payment, Invoice, User
+  entityId  String?
+  oldValue  String?  // JSON stringified previous state
+  newValue  String?  // JSON stringified new state
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([entity])
+  @@index([createdAt])
+}
+
+model LoginHistory {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ipAddress String?
+  userAgent String?
+  status    String   // SUCCESS, FAILED, BLOCKED
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model OTPVerification {
+  id         String   @id @default(uuid())
+  mobile     String?
+  email      String?
+  otpHash    String
+  purpose    String   // LOGIN, REGISTRATION, RESET_PASSWORD, TRANSACTION
+  expiresAt  DateTime
+  isVerified Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([mobile])
+  @@index([email])
+}
+
+model Quotation {
+  id           String    @id @default(uuid())
+  quoteNumber  String    @unique // e.g. FYN/QT/2026/000001
+  clientName   String
+  clientEmail  String?
+  clientMobile String
+  businessName String?
+  serviceName  String
+  scopeDetails String?
+  basePrice    Float
+  discount     Float     @default(0.0)
+  taxAmount    Float     @default(0.0)
+  totalAmount  Float
+  validUntil   DateTime
+  status       String    @default("DRAFT") // DRAFT, SENT, ACCEPTED, REJECTED, EXPIRED
+  notes        String?
+  createdById  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([quoteNumber])
+  @@index([status])
+  @@index([clientMobile])
+}
+
+model CompanySetting {
+  id             String   @id @default(uuid())
+  key            String   @unique
+  value          String
+  description    String?
+  updatedAt      DateTime @updatedAt
+
+  @@index([key])
+}
+
+model Deliverable {
+  id               String        @id @default(uuid())
+  orderId          String
+  order            Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  expertId         String?
+  expert           ExpertProfile? @relation(fields: [expertId], references: [id])
+  name             String
+  deliverableType  String        @default("CERTIFICATE") // CERTIFICATE, ACKNOWLEDGEMENT, REPORT, ROC_FILING, MIS, OTHER
+  fileUrl          String
+  fileSize         Int           @default(0)
+  description      String?
+  status           String        @default("SUBMITTED_FOR_REVIEW") // DRAFT, SUBMITTED_FOR_REVIEW, APPROVED, REVISION_REQUIRED, DELIVERED
+  revisionFeedback String?
+  deliveredAt      DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([orderId])
+  @@index([expertId])
+  @@index([status])
+}
+
+model ExpertTask {
+  id          String        @id @default(uuid())
+  orderId     String
+  order       Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  expertId    String
+  expert      ExpertProfile @relation(fields: [expertId], references: [id])
+  title       String
+  description String?
+  dueDate     DateTime?
+  priority    String        @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
+  status      String        @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, BLOCKED
+  completedAt DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([orderId])
+  @@index([expertId])
+  @@index([status])
+}
+
+// ==========================================
+// RECURRING SERVICES & BILLING CYCLES (PHASE 7)
+// ==========================================
+
+model RecurringService {
+  id               String          @id @default(uuid())
+  customerId       String
+  customer         CustomerProfile @relation(fields: [customerId], references: [id])
+  serviceId        String
+  service          Service         @relation(fields: [serviceId], references: [id])
+  packageId        String?
+  package          ServicePackage? @relation(fields: [packageId], references: [id])
+  assignedExpertId String?
+  assignedExpert   ExpertProfile?  @relation(fields: [assignedExpertId], references: [id])
+  orderId          String?
+  order            Order?          @relation(fields: [orderId], references: [id])
+  billingFrequency String          @default("MONTHLY") // MONTHLY, QUARTERLY, HALF_YEARLY, YEARLY, CUSTOM
+  amount           Float
+  discount         Float           @default(0.0)
+  taxAmount        Float           @default(0.0)
+  totalAmount      Float
+  status           String          @default("ACTIVE") // PENDING, ACTIVE, PAYMENT_DUE, PAYMENT_FAILED, SERVICE_DUE, IN_PROGRESS, COMPLETED, PAUSED, CANCELLED, EXPIRED
+  paymentMethod    String?         @default("PAYMENT_LINK") // UPI, CARD, NET_BANKING, PAYMENT_LINK, AUTO_DEBIT
+  paymentStatus    String          @default("PAID") // PENDING, PAID, FAILED, OVERDUE
+  startDate        DateTime        @default(now())
+  nextBillingDate  DateTime?
+  nextServiceDate  DateTime?
+  renewalDate      DateTime?
+  notes            String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  billingCycles    RecurringBillingCycle[]
+
+  @@index([customerId])
+  @@index([serviceId])
+  @@index([assignedExpertId])
+  @@index([status])
+  @@index([nextBillingDate])
+}
+
+model RecurringBillingCycle {
+  id                 String           @id @default(uuid())
+  recurringServiceId String
+  recurringService   RecurringService @relation(fields: [recurringServiceId], references: [id], onDelete: Cascade)
+  cycleNumber        Int              // 1, 2, 3, etc.
+  periodLabel        String           // e.g. "April 2026", "Q1 FY 2026-27"
+  startDate          DateTime
+  endDate            DateTime
+  dueDate            DateTime
+  amount             Float
+  invoiceId          String?          // Link to generated Invoice
+  paymentId          String?          // Link to Payment
+  status             String           @default("PENDING") // PENDING, INVOICED, PAID, SERVICE_DUE, IN_PROGRESS, COMPLETED, FAILED, OVERDUE
+  serviceOrderId     String?          // Spawned Order if any
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@unique([recurringServiceId, cycleNumber])
+  @@index([recurringServiceId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+// ==========================================
+// COMPLIANCE MANAGEMENT ENGINE (PHASE 7)
+// ==========================================
+
+model ComplianceRule {
+  id                     String             @id @default(uuid())
+  name                   String             // e.g. "GSTR-3B Monthly Return", "TDS Payment", "AOC-4 Financials"
+  code                   String             @unique // e.g. "GST_GSTR3B_MONTHLY"
+  category               String             // GST, TDS, INCOME_TAX, ROC_MCA, PAYROLL, OTHER
+  frequency              String             @default("MONTHLY") // MONTHLY, QUARTERLY, ANNUAL, EVENT_BASED
+  applicableBusinessType String             @default("ALL") // PVT_LTD, LLP, OPC, PROPRIETORSHIP, PARTNERSHIP, ALL
+  dayOfMonthDue          Int?               // e.g. 20 for GSTR-3B, 7 for TDS
+  monthOfQuarterDue      Int?               // e.g. 1st month next quarter
+  statutoryPenalty       String?            // e.g. "₹50/day late fee + 18% p.a. interest"
+  requiredDocuments      String?            // JSON array of required doc names
+  reminderDaysBefore     String             @default("[30, 15, 7, 3, 1]") // JSON array
+  isActive               Boolean            @default(true)
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+
+  records                ComplianceRecord[]
+
+  @@index([code])
+  @@index([category])
+  @@index([isActive])
+}
+
+model ComplianceRecord {
+  id                    String          @id @default(uuid())
+  customerId            String
+  customer              CustomerProfile @relation(fields: [customerId], references: [id])
+  ruleId                String?
+  rule                  ComplianceRule? @relation(fields: [ruleId], references: [id])
+  title                 String
+  category              String          // GST, TDS, INCOME_TAX, ROC_MCA, PAYROLL, OTHER
+  period                String          // e.g. "April 2026", "Q1 FY 2026-27"
+  dueDate               DateTime
+  status                String          @default("UPCOMING") 
+  // UPCOMING, DUE_SOON, DOCUMENTS_PENDING, IN_PROGRESS, SUBMITTED, GOVERNMENT_PROCESSING, COMPLETED, OVERDUE, NOT_APPLICABLE
+  penaltyRisk           String?
+  assignedExpertId      String?
+  assignedExpert        ExpertProfile?  @relation(fields: [assignedExpertId], references: [id])
+  orderId               String?
+  order                 Order?          @relation(fields: [orderId], references: [id])
+  notes                 String?
+  completionDate        DateTime?
+  acknowledgementNumber String?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  @@index([customerId])
+  @@index([ruleId])
+  @@index([assignedExpertId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+// ==========================================
+// BUSINESS DIAGNOSTICS & TOOL CONFIGS (PHASE 7)
+// ==========================================
+
+model BusinessDiagnostic {
+  id            String   @id @default(uuid())
+  type          String   // COMPLIANCE_CHECKUP, HEALTH_CHECK
+  businessName  String?
+  businessType  String?
+  city          String?
+  contactName   String?
+  contactMobile String?
+  contactEmail  String?
+  answersJson   String   // Raw responses JSON
+  score         Float?
+  summary       String?
+  leadId        String?  // Link to CRM lead if generated
+  createdAt     DateTime @default(now())
+
+  @@index([type])
+  @@index([contactMobile])
+  @@index([createdAt])
+}
+
+model ToolConfig {
+  id          String   @id @default(uuid())
+  slug        String   @unique // gst-calculator, income-tax-calculator, etc.
+  title       String
+  category    String   @default("TAX") // TAX, LEGAL, FINANCE, HR, REGISTRATION
+  description String?
+  disclaimer  String?
+  configJson  String?  // JSON with slabs, rates, options
+  isActive    Boolean  @default(true)
+  updatedAt   DateTime @updatedAt
+
+  @@index([slug])
+  @@index([isActive])
+}
+
+

@@ -1,0 +1,16 @@
+node_modules
+.next
+out
+.vscode
+backups
+deploy.tar.gz
+*.zip
+*.tar.gz
+*.log
+*.apk
+.env
+.env*.local
+dev.db
+*.db
+*.db-journal
+tsconfig.tsbuildinfo
