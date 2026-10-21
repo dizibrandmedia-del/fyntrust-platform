@@ -20,7 +20,7 @@ const modelTables = new Set([
 ]);
 
 function quoteMysql(identifier) {
-  return `\\${identifier.replaceAll("`", "``")}\\`;
+  return String.fromCharCode(96) + identifier.replaceAll(String.fromCharCode(96), String.fromCharCode(96).repeat(2)) + String.fromCharCode(96);
 }
 
 function quoteSqlite(identifier) {
@@ -57,6 +57,7 @@ async function main() {
   if (alreadyImported) {
     console.info("SQLite data migration was already completed; skipping.");
     source.close();
+    await prisma.$disconnect();
     return;
   }
 
