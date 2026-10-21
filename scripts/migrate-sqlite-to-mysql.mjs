@@ -29,14 +29,44 @@ function quoteSqlite(identifier) {
 
 function normalizeValue(value, column) {
   if (value === null || value === undefined) return null;
-  if (/^(DATETIME|TIMESTAMP)/i.test(column.type ?? "") && typeof value === "string") {
+  if (/^(DATETIME|TIMESTAMP|DATE)/i.test(column.type ?? "") && typeof value === "string") {
+    const parts = value.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})(?:[T ](\\d{2}):(\\d{2}):(\\d{2})(?:\\.(\\d+))?(?:Z|[+-]\\d{2}:?\\d{2})?)?$/);
+    if (parts) {
+      const year = Number(parts[1]);
+      const month = Number(parts[2]);
+      const day = Number(parts[3]);
+      const maxDay = month >= 1 && month <= 12
+        ? new Date(Date.UTC(year, month, 0)).getUTCDate()
+        : 0;
+      if (year < 1 || day < 1 || day > maxDay) {
+        return "2000-01-01 00:00:00.000";
+      }
+    }
+
     const date = new Date(value);
     if (!Number.isNaN(date.getTime())) {
       return date.toISOString().replace("T", " ").replace("Z", "").slice(0, 23);
     }
+    return "2000-01-01 00:00:00.000";
   }
   if (typeof value === "bigint") return value.toString();
   return value;
+}
+
+async function repairInvalidDateTimes() {
+  const columns = await prisma.$queryRawUnsafe(
+    "SELECT TABLE_NAME AS tableName, COLUMN_NAME AS columnName FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND DATA_TYPE IN ('date', 'datetime', 'timestamp')",
+  );
+  let repaired = 0;
+  for (const { tableName, columnName } of columns) {
+    const table = quoteMysql(tableName);
+    const column = quoteMysql(columnName);
+    repaired += await prisma.$executeRawUnsafe(
+      `UPDATE ${table} SET ${column} = ? WHERE YEAR(${column}) = 0 OR MONTH(${column}) = 0 OR DAYOFMONTH(${column}) = 0`,
+      "2000-01-01 00:00:00.000",
+    );
+  }
+  return repaired;
 }
 
 async function main() {
@@ -50,6 +80,11 @@ async function main() {
     .all("table", "sqlite_%")
     .map((row) => row.name)
     .filter((name) => modelTables.has(name));
+
+  const repairedDates = await repairInvalidDateTimes();
+  if (repairedDates > 0) {
+    console.info(`Repaired ${repairedDates} legacy date values during import.`);
+  }
 
   const alreadyImported = await prisma.databaseImport.findUnique({
     where: { id: "sqlite-import-v1" },
