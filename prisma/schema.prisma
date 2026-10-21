@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
@@ -16,7 +16,7 @@ model User {
   email              String?         @unique
   mobile             String?         @unique
   passwordHash       String?
-  fullName           String
+  fullName           String @db.LongText
   role               String          @default("CUSTOMER") // SUPER_ADMIN, ADMIN, SALES, CA_FINANCE_EXPERT, ACCOUNTANT, LEGAL_PARTNER, VIRTUAL_CFO, CUSTOMER
   isActive           Boolean         @default(true)
   isTwoFactorEnabled Boolean         @default(false)
@@ -82,7 +82,7 @@ model ExpertProfile {
   rating             Float     @default(5.0)
   commissionRate     Float     @default(0.0) // Percentage or fixed rate
   panNumber          String?
-  bankDetails        String?   // JSON structured bank account info
+  bankDetails        String? @db.LongText // JSON structured bank account info
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -104,7 +104,7 @@ model ServiceCategory {
   id           String    @id @default(uuid())
   name         String    @unique
   slug         String    @unique
-  description  String?
+  description  String? @db.LongText
   icon         String?
   displayOrder Int       @default(0)
   isActive     Boolean   @default(true)
@@ -123,18 +123,18 @@ model Service {
   category          ServiceCategory @relation(fields: [categoryId], references: [id])
   name              String
   slug              String          @unique
-  shortDescription  String
-  fullDescription   String
+  shortDescription  String @db.LongText
+  fullDescription   String @db.LongText
   startingPrice     Float           @default(0.0)
   discountPrice     Float?
   slaDays           Int             @default(3)
   department        String          @default("TAX") // TAX, LEGAL, ACCOUNTING, COMPLIANCE, ROC, CFO
   expertCategory    String          @default("CA_FINANCE_EXPERT")
-  whatsIncluded     String          // JSON array of strings
-  eligibility       String?         // JSON array of strings
-  documentsRequired String          // JSON array of strings
-  processSteps      String          // JSON array of objects [{step: 1, title: '', desc: ''}]
-  faqs              String?         // JSON array of objects [{q: '', a: ''}]
+  whatsIncluded     String @db.LongText // JSON array of strings
+  eligibility       String? @db.LongText // JSON array of strings
+  documentsRequired String @db.LongText // JSON array of strings
+  processSteps      String @db.LongText // JSON array of objects [{step: 1, title: '', desc: ''}]
+  faqs              String? @db.LongText // JSON array of objects [{q: '', a: ''}]
   isFeatured        Boolean         @default(false)
   isActive          Boolean         @default(true)
   createdAt         DateTime        @default(now())
@@ -161,8 +161,8 @@ model ServicePackage {
   tier        String   @default("STARTER") // STARTER, GROWTH, ADVANCED, PREMIUM
   price       Float
   slaDays     Int      @default(3)
-  description String?
-  features    String   // JSON array of feature strings
+  description String? @db.LongText
+  features    String @db.LongText // JSON array of feature strings
   isPopular   Boolean  @default(false)
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
@@ -194,7 +194,7 @@ model Order {
   paymentStatus    String          @default("PENDING") // PENDING, PAID, FAILED, REFUNDED
   totalAmount      Float           @default(0.0)
   currency         String          @default("INR")
-  requirementData  String?         // JSON answers to dynamic service questions
+  requirementData  String? @db.LongText // JSON answers to dynamic service questions
   assignedExpertId String?
   assignedExpert   ExpertProfile?  @relation(fields: [assignedExpertId], references: [id])
   assignedAt       DateTime?
@@ -234,12 +234,12 @@ model OrderStep {
   id          String    @id @default(uuid())
   orderId     String
   order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  title       String
-  description String?
+  title       String @db.LongText
+  description String? @db.LongText
   stepNumber  Int
   status      String    @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, SKIPPED
   completedAt DateTime?
-  notes       String?   // Internal step notes
+  notes       String? @db.LongText // Internal step notes
   createdAt   DateTime  @default(now())
 
   @@index([orderId])
@@ -253,8 +253,8 @@ model OrderMessage {
   senderId       String
   sender         User      @relation(fields: [senderId], references: [id])
   senderRole     String
-  message        String
-  attachments    String?   // JSON array of file objects
+  message        String @db.LongText
+  attachments    String? @db.LongText // JSON array of file objects
   isInternalOnly Boolean   @default(false) // If true, NEVER returned to customer API
   isRead         Boolean   @default(false)
   createdAt      DateTime  @default(now())
@@ -276,13 +276,13 @@ model Document {
   order              Order?          @relation(fields: [orderId], references: [id])
   name               String
   fileKey            String          // S3 Key or local path: Client/FY/Service/filename
-  fileUrl            String
+  fileUrl            String @db.LongText
   fileType           String
   fileSize           Int             @default(0) // bytes
   financialYear      String          @default("2026-27") // e.g. 2026-27
   category           String          @default("GENERAL") // GST, ITR, ROC, INCORPORATION, AUDIT, BANKING, GENERAL
   status             String          @default("PENDING_VERIFICATION") // PENDING_UPLOAD, PENDING_VERIFICATION, VERIFIED, REJECTED, EXPIRED
-  rejectionReason    String?
+  rejectionReason    String? @db.LongText
   requestedByUserId  String?
   verifiedAt         DateTime?
   createdAt          DateTime        @default(now())
@@ -315,7 +315,7 @@ model Payment {
   paymentMethod    String?         // UPI, CARD, NET_BANKING, PAYMENT_LINK
   paymentDate      DateTime?
   failureReason    String?
-  rawResponse      String?         // JSON debug response
+  rawResponse      String? @db.LongText // JSON debug response
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
@@ -339,7 +339,7 @@ model Invoice {
   invoiceDate   DateTime        @default(now())
   dueDate       DateTime?
   pdfUrl        String?
-  lineItems     String          // JSON array of items [{desc: '', qty: 1, rate: 0, tax: 0, total: 0}]
+  lineItems     String @db.LongText // JSON array of items [{desc: '', qty: 1, rate: 0, tax: 0, total: 0}]
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
@@ -356,7 +356,7 @@ model CreditNote {
   invoiceId        String
   invoice          Invoice  @relation(fields: [invoiceId], references: [id])
   amount           Float
-  reason           String
+  reason           String @db.LongText
   status           String   @default("ISSUED") // ISSUED, APPLIED, CANCELLED
   createdAt        DateTime @default(now())
 
@@ -371,12 +371,12 @@ model ComplianceItem {
   id            String          @id @default(uuid())
   customerId    String
   customer      CustomerProfile @relation(fields: [customerId], references: [id])
-  title         String          // e.g. GSTR-3B Monthly Filing, Advance Tax Q1
+  title         String @db.LongText // e.g. GSTR-3B Monthly Filing, Advance Tax Q1
   category      String          // GST, ITR, TDS, ROC, ADVANCE_TAX, PF_ESIC
   dueDate       DateTime
   financialYear String          @default("2026-27")
   status        String          @default("UPCOMING") // UPCOMING, COMPLETED, OVERDUE, WAIVED
-  penaltyRisk   String?         // e.g. "Late fee ₹50/day + 18% p.a. interest"
+  penaltyRisk   String? @db.LongText // e.g. "Late fee ₹50/day + 18% p.a. interest"
   reminderSent  Boolean         @default(false)
   completedAt   DateTime?
   createdAt     DateTime        @default(now())
@@ -404,7 +404,7 @@ model Lead {
   source         String    @default("WEBSITE") // WEBSITE, META_ADS, GOOGLE_ADS, WHATSAPP, DIRECT, REFERRAL
   status         String    @default("NEW_LEAD") 
   // NEW_LEAD, CONTACTED, QUALIFIED, QUOTATION, FOLLOW_UP, PAYMENT, CONVERTED, LOST
-  notes          String?   // Sales notes history JSON or text
+  notes          String? @db.LongText // Sales notes history JSON or text
   assignedSalesId String?
   assignedSales  User?     @relation("AssignedSales", fields: [assignedSalesId], references: [id])
   quoteAmount    Float?
@@ -426,16 +426,16 @@ model City {
   name                String            @unique // Delhi, Mumbai, Bengaluru, Lucknow, Varanasi, etc.
   slug                String            @unique
   state               String
-  shortDescription    String?
-  serviceAvailability String?           // JSON array of service slugs or "ALL"
+  shortDescription    String? @db.LongText
+  serviceAvailability String? @db.LongText // JSON array of service slugs or "ALL"
   isPopular           Boolean           @default(false)
   featuredStatus      Boolean           @default(false)
   isActive            Boolean           @default(true)
   status              String            @default("ACTIVE") // ACTIVE, DRAFT, COMING_SOON
-  localAddress        String?
+  localAddress        String? @db.LongText
   localPhone          String?
-  seoTitle            String?
-  seoDescription      String?
+  seoTitle            String? @db.LongText
+  seoDescription      String? @db.LongText
   createdAt           DateTime          @default(now())
 
   seoPages            SEOPages[]
@@ -452,17 +452,17 @@ model CityServicePage {
   serviceId         String
   service           Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   slug              String   @unique // e.g. "lucknow/gst-registration"
-  title             String
+  title             String @db.LongText
   metaTitle         String?
   metaDescription   String?
-  overview          String
-  localContext      String
-  whoItsFor         String
-  processSteps      String?  // JSON array of steps
-  documentsRequired String?  // JSON array of doc strings
-  pricingNotes      String?
+  overview          String @db.LongText
+  localContext      String @db.LongText
+  whoItsFor         String @db.LongText
+  processSteps      String? @db.LongText // JSON array of steps
+  documentsRequired String? @db.LongText // JSON array of doc strings
+  pricingNotes      String? @db.LongText
   startingPrice     Float?
-  faqs              String?  // JSON array of {q, a}
+  faqs              String? @db.LongText // JSON array of {q, a}
   status            String   @default("PUBLISHED") // PUBLISHED, DRAFT, NOINDEX
   isPublished       Boolean  @default(true)
   createdAt         DateTime @default(now())
@@ -495,8 +495,8 @@ model SEOPages {
   primaryKeyword     String?
   secondaryKeywords  String?
   sitemapIncluded    Boolean  @default(true)
-  structuredDataJson String?  // JSON schema LD override
-  contentJson        String?  // Rich dynamic section content
+  structuredDataJson String? @db.LongText // JSON schema LD override
+  contentJson        String? @db.LongText // Rich dynamic section content
   isPublished        Boolean  @default(true)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -507,11 +507,11 @@ model SEOPages {
 
 model Blog {
   id              String    @id @default(uuid())
-  title           String
+  title           String @db.LongText
   slug            String    @unique
   category        String    // GST, INCOME_TAX, COMPANY_REGISTRATION, MCA, ACCOUNTING, VIRTUAL_CFO, STARTUP
-  excerpt         String
-  content         String
+  excerpt         String @db.LongText
+  content         String @db.LongText
   featuredImage   String?
   authorName      String    @default("Fyntrust Editorial Team")
   authorRole      String?   @default("Senior Financial & Legal Consultant")
@@ -531,9 +531,9 @@ model Blog {
 
 model ResourceItem {
   id            String   @id @default(uuid())
-  title         String
+  title         String @db.LongText
   category      String   // CHECKLIST, GUIDE, TEMPLATE, TAX_CHART, CALCULATOR
-  fileUrl       String
+  fileUrl       String @db.LongText
   fileType      String   @default("PDF")
   fileSize      Int      @default(0)
   downloadCount Int      @default(0)
@@ -554,7 +554,7 @@ model Review {
   city         String
   serviceName  String
   rating       Int              @default(5)
-  reviewText   String
+  reviewText   String @db.LongText
   photoUrl     String?
   status       String           @default("APPROVED") // PENDING, APPROVED, REJECTED, HIDDEN
   isPublished  Boolean          @default(true)
@@ -611,7 +611,7 @@ model AnalyticsEvent {
   utmContent     String?
   city           String?
   serviceSlug    String?
-  propertiesJson String?  // Additional event metadata JSON
+  propertiesJson String? @db.LongText // Additional event metadata JSON
   createdAt      DateTime @default(now())
 
   @@index([eventName])
@@ -626,8 +626,8 @@ model NotificationTemplate {
   eventType    String   // ORDER_CREATED, PAYMENT_SUCCESS, DOCUMENTS_PENDING, EXPERT_ASSIGNED, STATUS_UPDATE, RENEWAL_REMINDER
   channel      String   // EMAIL, WHATSAPP, SMS, DASHBOARD
   subject      String?
-  bodyTemplate String   // Template with {{customerName}}, {{orderId}}, {{serviceName}}
-  variables    String   // JSON array of available variable strings
+  bodyTemplate String @db.LongText // Template with {{customerName}}, {{orderId}}, {{serviceName}}
+  variables    String @db.LongText // JSON array of available variable strings
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -640,8 +640,8 @@ model CustomerNotification {
   id        String   @id @default(uuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  title     String
-  message   String
+  title     String @db.LongText
+  message   String @db.LongText
   channel   String   @default("DASHBOARD") // EMAIL, WHATSAPP, SMS, DASHBOARD
   isRead    Boolean  @default(false)
   linkUrl   String?
@@ -663,10 +663,10 @@ model AuditLog {
   action    String   // CREATE, UPDATE, DELETE, ASSIGN, STATUS_CHANGE, LOGIN, EXPORT
   entity    String   // Order, Service, Customer, Expert, Payment, Invoice, User
   entityId  String?
-  oldValue  String?  // JSON stringified previous state
-  newValue  String?  // JSON stringified new state
+  oldValue  String? @db.LongText // JSON stringified previous state
+  newValue  String? @db.LongText // JSON stringified new state
   ipAddress String?
-  userAgent String?
+  userAgent String? @db.LongText
   createdAt DateTime @default(now())
 
   @@index([userId])
@@ -680,7 +680,7 @@ model LoginHistory {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   ipAddress String?
-  userAgent String?
+  userAgent String? @db.LongText
   status    String   // SUCCESS, FAILED, BLOCKED
   createdAt DateTime @default(now())
 
@@ -710,14 +710,14 @@ model Quotation {
   clientMobile String
   businessName String?
   serviceName  String
-  scopeDetails String?
+  scopeDetails String? @db.LongText
   basePrice    Float
   discount     Float     @default(0.0)
   taxAmount    Float     @default(0.0)
   totalAmount  Float
   validUntil   DateTime
   status       String    @default("DRAFT") // DRAFT, SENT, ACCEPTED, REJECTED, EXPIRED
-  notes        String?
+  notes        String? @db.LongText
   createdById  String?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -731,7 +731,7 @@ model CompanySetting {
   id             String   @id @default(uuid())
   key            String   @unique
   value          String
-  description    String?
+  description    String? @db.LongText
   updatedAt      DateTime @updatedAt
 
   @@index([key])
@@ -745,11 +745,11 @@ model Deliverable {
   expert           ExpertProfile? @relation(fields: [expertId], references: [id])
   name             String
   deliverableType  String        @default("CERTIFICATE") // CERTIFICATE, ACKNOWLEDGEMENT, REPORT, ROC_FILING, MIS, OTHER
-  fileUrl          String
+  fileUrl          String @db.LongText
   fileSize         Int           @default(0)
-  description      String?
+  description      String? @db.LongText
   status           String        @default("SUBMITTED_FOR_REVIEW") // DRAFT, SUBMITTED_FOR_REVIEW, APPROVED, REVISION_REQUIRED, DELIVERED
-  revisionFeedback String?
+  revisionFeedback String? @db.LongText
   deliveredAt      DateTime?
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
@@ -765,8 +765,8 @@ model ExpertTask {
   order       Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
   expertId    String
   expert      ExpertProfile @relation(fields: [expertId], references: [id])
-  title       String
-  description String?
+  title       String @db.LongText
+  description String? @db.LongText
   dueDate     DateTime?
   priority    String        @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
   status      String        @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, BLOCKED
@@ -807,7 +807,7 @@ model RecurringService {
   nextBillingDate  DateTime?
   nextServiceDate  DateTime?
   renewalDate      DateTime?
-  notes            String?
+  notes            String? @db.LongText
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
@@ -856,8 +856,8 @@ model ComplianceRule {
   applicableBusinessType String             @default("ALL") // PVT_LTD, LLP, OPC, PROPRIETORSHIP, PARTNERSHIP, ALL
   dayOfMonthDue          Int?               // e.g. 20 for GSTR-3B, 7 for TDS
   monthOfQuarterDue      Int?               // e.g. 1st month next quarter
-  statutoryPenalty       String?            // e.g. "₹50/day late fee + 18% p.a. interest"
-  requiredDocuments      String?            // JSON array of required doc names
+  statutoryPenalty       String? @db.LongText // e.g. "₹50/day late fee + 18% p.a. interest"
+  requiredDocuments      String? @db.LongText // JSON array of required doc names
   reminderDaysBefore     String             @default("[30, 15, 7, 3, 1]") // JSON array
   isActive               Boolean            @default(true)
   createdAt              DateTime           @default(now())
@@ -876,18 +876,18 @@ model ComplianceRecord {
   customer              CustomerProfile @relation(fields: [customerId], references: [id])
   ruleId                String?
   rule                  ComplianceRule? @relation(fields: [ruleId], references: [id])
-  title                 String
+  title                 String @db.LongText
   category              String          // GST, TDS, INCOME_TAX, ROC_MCA, PAYROLL, OTHER
   period                String          // e.g. "April 2026", "Q1 FY 2026-27"
   dueDate               DateTime
   status                String          @default("UPCOMING") 
   // UPCOMING, DUE_SOON, DOCUMENTS_PENDING, IN_PROGRESS, SUBMITTED, GOVERNMENT_PROCESSING, COMPLETED, OVERDUE, NOT_APPLICABLE
-  penaltyRisk           String?
+  penaltyRisk           String? @db.LongText
   assignedExpertId      String?
   assignedExpert        ExpertProfile?  @relation(fields: [assignedExpertId], references: [id])
   orderId               String?
   order                 Order?          @relation(fields: [orderId], references: [id])
-  notes                 String?
+  notes                 String? @db.LongText
   completionDate        DateTime?
   acknowledgementNumber String?
   createdAt             DateTime        @default(now())
@@ -915,7 +915,7 @@ model BusinessDiagnostic {
   contactEmail  String?
   answersJson   String   // Raw responses JSON
   score         Float?
-  summary       String?
+  summary       String? @db.LongText
   leadId        String?  // Link to CRM lead if generated
   createdAt     DateTime @default(now())
 
@@ -927,11 +927,11 @@ model BusinessDiagnostic {
 model ToolConfig {
   id          String   @id @default(uuid())
   slug        String   @unique // gst-calculator, income-tax-calculator, etc.
-  title       String
+  title       String @db.LongText
   category    String   @default("TAX") // TAX, LEGAL, FINANCE, HR, REGISTRATION
-  description String?
-  disclaimer  String?
-  configJson  String?  // JSON with slabs, rates, options
+  description String? @db.LongText
+  disclaimer  String? @db.LongText
+  configJson  String? @db.LongText // JSON with slabs, rates, options
   isActive    Boolean  @default(true)
   updatedAt   DateTime @updatedAt
 
@@ -940,3 +940,13 @@ model ToolConfig {
 }
 
 
+
+
+model DatabaseImport {
+  id          String   @id
+  source      String
+  sourceTables Int
+  completedAt DateTime @default(now())
+
+  @@map("_DatabaseImport")
+}
