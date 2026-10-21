@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npm install --include=dev --ignore-scripts && prisma generate && prisma db push && node scripts/migrate-sqlite-to-mysql.mjs && next build",
+    "build": "npm install --include=dev --ignore-scripts && node -e \"const fs=require('fs');for(const f of fs.readdirSync('node_modules/@prisma/engines'))if(/^(schema-engine|query-engine)-/.test(f))fs.chmodSync('node_modules/@prisma/engines/'+f,0o755)\" && prisma generate && prisma db push && node scripts/migrate-sqlite-to-mysql.mjs && next build",
     "postinstall": "prisma generate",
     "start": "next start",
     "lint": "next lint",
