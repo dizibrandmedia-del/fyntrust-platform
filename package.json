@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npm install --include=dev --ignore-scripts && prisma generate && next build",
+    "build": "npm install --include=dev --ignore-scripts && prisma generate && prisma db push && node scripts/migrate-sqlite-to-mysql.mjs && next build",
     "postinstall": "prisma generate",
     "start": "next start",
     "lint": "next lint",
