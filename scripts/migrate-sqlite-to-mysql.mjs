@@ -39,7 +39,7 @@ function normalizeValue(value, column) {
         ? new Date(Date.UTC(year, month, 0)).getUTCDate()
         : 0;
       if (year < 1 || day < 1 || day > maxDay) {
-        return "2000-01-01 00:00:00.000";
+        return new Date().toISOString().replace("T", " ").replace("Z", "").slice(0, 23);
       }
     }
 
@@ -47,7 +47,7 @@ function normalizeValue(value, column) {
     if (!Number.isNaN(date.getTime())) {
       return date.toISOString().replace("T", " ").replace("Z", "").slice(0, 23);
     }
-    return "2000-01-01 00:00:00.000";
+    return new Date().toISOString().replace("T", " ").replace("Z", "").slice(0, 23);
   }
   if (typeof value === "bigint") return value.toString();
   return value;
@@ -62,7 +62,7 @@ async function repairInvalidDateTimes() {
     const table = quoteMysql(tableName);
     const column = quoteMysql(columnName);
     repaired += await prisma.$executeRawUnsafe(
-      `UPDATE ${table} SET ${column} = ? WHERE YEAR(${column}) = 0 OR MONTH(${column}) = 0 OR DAYOFMONTH(${column}) = 0`,
+      `UPDATE ${table} SET ${column} = CURRENT_TIMESTAMP(3) WHERE YEAR(${column}) = 0 OR MONTH(${column}) = 0 OR DAYOFMONTH(${column}) = 0 OR ${column} = ?`,
       "2000-01-01 00:00:00.000",
     );
   }
